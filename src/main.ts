@@ -54,48 +54,48 @@ class Factory {
 
     width: number;
     height: number;
+    startX: number;
+    startY: number;
+    startDirection: Direction;
     board: Field[][];
     stack: Stack;
     div: JQuery;
+    currentInterval: number = null;
+    tileContainer: JQuery;
 
-    constructor (width: number, height: number, div: string) {
-        if (width <= 4 || width <= 4) {
-            throw "Sizing of Factory should be larger than 4";
+    constructor (width: number, height: number, startX: number, startY: number, startDirection: Direction, div: string) {
+        if (width <= 0 || width <= 0) {
+            throw "Sizing of Factory should be larger than 1";
         }
         this.width = Math.floor(width);
         this.height = Math.floor(height);
+        this.startX = Math.floor(startX);
+        this.startY = Math.floor(startY);
+        this.startDirection = startDirection;
         this.board = [];
         this.div = $(div);
-        var gameContainer = $('<div class="grid-container">');
+        this.tileContainer = $('<div class="tile-container">').appendTo(this.div);;
+        var gameContainer = $('<div class="grid-container">').appendTo(this.div);;
         gameContainer.appendTo(this.div);
         this.stack = new Stack(this);
-        $(this.div).width(Math.floor(this.width * 120.25));
-        $(this.div).height(Math.floor(this.height * 120.25));
         for (var i = 0; i < this.height; i++) {
             this.board[i] = [];
             var gridRow = $('<div class="grid-row">');
             gridRow.appendTo(gameContainer);
             for (var j = 0; j < this.width; j++) {
-                var newField = new Field(i, j);
-                $('<div class="grid-cell">').appendTo(gridRow);
-                this.board[i][j] = newField;
-                if (j == 6) {
-//                    newField.setAction(new RandomAction(this.div.find('.tile-container')));
-                }
+                var gridCell = $('<div class="grid-cell">').appendTo(gridRow).data('x', j).data('y', i);
+                this.board[i][j] = new Field(i, j);
             }
         }
-        this.board[10][5].setAction(new UpAction(this.div.find('.tile-container')));
-        this.board[5][8].setAction(new SwapAction(this.div.find('.tile-container')));
-        this.board[5][10].setAction(new LeftAction(this.div.find('.tile-container')));
-        this.board[2][5].setAction(new DupAction(this.div.find('.tile-container')));
-        this.board[0][5].setAction(new DownAction(this.div.find('.tile-container')));
-        this.board[5][2].setAction(new AddAction(this.div.find('.tile-container')));
-        this.board[5][0].setAction(new RightAction(this.div.find('.tile-container')));
-        this.board[8][5].setAction(new SubtractAction(this.div.find('.tile-container')));
-        this.board[5][5].setAction(new RandomAction(this.div.find('.tile-container')));
-        this.flappy = new Flappy(5, 5, Direction.RIGHT, this);
-        this.stack.push(10);
-        this.stack.push(20);
+        this.addTile(this.startX, this.startY, 'START');
+        this.flappy = null;
+    }
+    addTile(x: number, y: number, text: string) {
+        var outerDiv = $('<div>').addClass('tile-position-' + x + '-' + y).addClass('tile');
+        var innerDiv = $('<div>').addClass('tile-inner').appendTo(outerDiv);
+        innerDiv.text(text);
+        outerDiv.addClass('text-length-' + (text.length));
+        this.tileContainer.append(outerDiv);
     }
     step () {
         var currentField = this.board[this.flappy.top][this.flappy.left];
@@ -107,28 +107,88 @@ class Factory {
         }
         this.flappy.moveInDirection(direction);
     }
-}
-
-class FactoryManager {
-    factories: Factory[] = [];
-    currentInterval: number = -1;
-    run () {
+    run (speed: number = 100) {
+        if (this.flappy && this.flappy.div.is('.dead')) {
+            this.stop();
+        }
+        if (this.flappy === null) {
+            this.flappy = new Flappy(this.startX, this.startY, this.startDirection, this);
+        }
         this.currentInterval = setInterval(() => {
-            this.factories.forEach((factory: Factory) => {
-                try {
-                    factory.step();
-                } catch(err) {
-                    clearInterval(this.currentInterval);
-                    factory.flappy.die();
-                    throw err;
-                }
-            });
-        }, 100);
+            try {
+                this.step();
+            } catch(err) {
+                this.pause();
+                this.flappy.die();
+                throw err;
+            }
+        }, speed)
+
+    }
+    pause () {
+        if (this.currentInterval) {
+            clearInterval(this.currentInterval);
+            this.currentInterval = null;
+        }
+    }
+    stop () {
+        this.pause();
+        if (this.flappy) {
+            this.flappy.destroy();
+        }
     }
 }
+interface LevelSerialized {
+    name: string;
+    order: number;
+    width: number;
+    height: number;
+    startX: number;
+    startY: number;
+    startDirection: Direction;
+    blocksAvailable: any;
+    testCases: any[];
+    description: string;
+}
+class Level {
+    factory: Factory;
+    name: string;
+    description: string;
 
+    constructor (levelObject: LevelSerialized) {
+        this.name = levelObject.name;
+        this.factory = new Factory(
+            levelObject.width,
+            levelObject.height,
+            levelObject.startX,
+            levelObject.startY,
+            levelObject.startDirection,
+            '.factory1'
+        );
+        this.description = levelObject.description;
+    }
+    run(speed: number = 100) {
+        this.factory.run(speed);
+    }
+}
+var level;
 $(function () {
-    var fm = new FactoryManager();
-    fm.factories.push(new Factory(11, 11, '.factory1'));
-    fm.run();
+    level = new Level({
+        name: 'MultiMeter',
+        order: 1,
+        width: 4,
+        height: 4,
+        startX: 0,
+        startY: 0,
+        startDirection: Direction.RIGHT,
+        blocksAvailable: {
+            'Add': 1,
+            'Return': 1,
+            'Down': 1,
+            'Left': 1,
+            'Up': 1,
+        },
+        testCases: [],
+        description: 'Multiply two numbers that will be put on the stack',
+    });
 });
